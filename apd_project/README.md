@@ -1,263 +1,132 @@
 # 🦺 Sistem Monitoring APD K3 – Panduan Menjalankan Sistem
 **Kelompok 04 – Universitas Brawijaya 2026**
 
----
-
-## Prasyarat
-
-Pastikan semua sudah tersedia sebelum menjalankan sistem:
-
-- ✅ Python 3.10+ terinstall
-- ✅ File `best.pt` ada di folder `apd_project`
-- ✅ Semua library terinstall (`pip install -r requirements.txt`)
-- ✅ Webcam tersambung ke laptop
-- ✅ Virtual environment sudah dibuat
+Sistem ini digunakan untuk mendeteksi kepatuhan penggunaan Alat Pelindung Diri (APD) pada lingkungan kerja secara *real-time* berbasis Computer Vision (YOLOv8) dengan fitur dashboard pelaporan dan notifikasi Telegram.
 
 ---
 
-## Struktur Folder
+## 🛠️ Prasyarat
 
-```
+Pastikan semua persyaratan berikut sudah terpenuhi sebelum menjalankan sistem:
+
+- ✅ Python 3.10+ sudah terinstall.
+- ✅ File `best.pt` (model YOLO) sudah ada di dalam folder root `apd_project`.
+- ✅ Webcam tersambung dan berfungsi di laptop/PC.
+- ✅ Virtual environment (`.venv`) sudah dibuat dan semua dependensi terinstall.
+  *Jika belum: Jalankan `pip install -r requirements.txt` di dalam virtual environment.*
+
+---
+
+## 📂 Struktur Folder Proyek
+
+```text
 apd_project/
+├── .venv/                        ← Virtual environment Python (Dependensi lokal)
 ├── app/
-│   ├── backend.py          ← REST API FastAPI
-│   ├── dashboard.py        ← Dashboard Streamlit
-│   └── dashboard.html      ← Dashboard HTML (tanpa server)
+│   ├── backend.py                ← REST API (FastAPI) untuk menangani database & data
+│   └── dashboard.py              ← Dashboard interaktif (Streamlit)
+├── captures/                     ← Folder otomatis tempat hasil foto pelanggaran disimpan
+├── dataset/                      ← Folder dataset YOLOv8
+├── runs/                         ← Folder log dari proses evaluasi & training YOLOv8
 ├── scripts/
-│   ├── detect_realtime.py  ← Deteksi real-time webcam
-│   ├── evaluate.py         ← Evaluasi model
-│   └── train.py            ← Training model
+│   ├── detect_realtime.py        ← Script inferensi & deteksi kamera real-time
+│   ├── evaluate.py               ← Script evaluasi performa model
+│   └── train.py                  ← Script untuk melatih ulang model YOLO
 ├── utils/
-│   ├── ai_integration_client.py  ← Kirim data ke backend
-│   ├── dashboard_client.py       ← Ambil data dari backend
-│   ├── violation_handler.py      ← Auto-capture pelanggaran
-│   └── notifier.py               ← Notifikasi email/Telegram
-├── captures/               ← Hasil auto-capture (dibuat otomatis)
-├── dataset/                ← Dataset YOLOv8
-├── best.pt                 ← Model hasil training
-├── requirements.txt
-└── docker-compose.yml
+│   ├── ai_integration_client.py  ← Mengirim data pelanggaran dari kamera ke backend
+│   ├── notifier.py               ← Mengirim notifikasi pelanggaran via Telegram
+│   └── violation_handler.py      ← Mengambil foto bukti (auto-capture) pelanggaran
+├── .env                          ← File konfigurasi environment variables (Tokens, DB config)
+├── .gitignore                    ← Konfigurasi file yang diabaikan oleh Git
+├── Dockerfile                    ← Script untuk membungkus Dashboard menjadi Docker image
+├── README.md                     ← Panduan ini
+├── best.pt                       ← Model AI YOLOv8 yang sudah dilatih (Weights)
+├── docker-compose.yml            ← Konfigurasi Docker (PostgreSQL & Dashboard Opsional)
+└── requirements.txt              ← Daftar library yang dibutuhkan
 ```
+
+*(Catatan: File duplikat yang tidak terpakai seperti `dashboard.html` dan `dashboard_client.py` telah dihapus agar proyek lebih bersih).*
 
 ---
 
-## Langkah 0 — Aktifkan Virtual Environment
+## 🚀 Langkah Menjalankan Sistem
 
-Buka terminal VSCode, jalankan setiap kali sebelum memulai:
+Untuk menjalankan sistem ini secara penuh, Anda harus **membuka 3 Terminal terpisah** (bisa menggunakan fitur *Split Terminal* di VSCode). **Penting:** Pastikan Virtual Environment aktif di ketiga terminal tersebut sebelum menjalankan perintah!
 
-```bash
-# Windows
-cd C:\apd_project_kelompok04\apd_project
+### 🔹 Langkah 0: Aktifkan Virtual Environment
+Jalankan perintah ini di **setiap** terminal yang baru dibuka:
+```powershell
+# Untuk Windows (PowerShell)
+cd d:\apd_project_kelompok04\apd_project
 .\.venv\Scripts\Activate.ps1
-
-# Harus muncul:
-# (.venv) PS C:\apd_project_kelompok04\apd_project>
 ```
+*(Pastikan muncul tulisan `(.venv)` di awal baris terminal)*
 
----
-
-## Langkah 1 — Jalankan Backend API
-
-**Buka Terminal 1**, jalankan:
-
+### 🔹 Langkah 1: Jalankan Backend API
+**Di Terminal 1**, jalankan server backend untuk menerima data dari kamera:
 ```bash
-pip install fastapi uvicorn python-multipart
 uvicorn app.backend:app --host 0.0.0.0 --port 8000 --reload
 ```
+✅ **Verifikasi:** Buka browser dan akses `http://localhost:8000/docs`. Jika muncul halaman Swagger UI, backend telah berjalan dengan sukses.
 
-**Verifikasi berhasil:**
-- Buka browser → `http://localhost:8000/docs`
-- Swagger UI harus muncul dengan semua endpoint
-
-**Endpoint yang tersedia:**
-```
-POST   /api/v1/violations         → Kirim data pelanggaran
-GET    /api/v1/violations         → Ambil semua pelanggaran
-GET    /api/v1/violations/{id}    → Detail satu pelanggaran
-DELETE /api/v1/violations/{id}    → Hapus pelanggaran
-GET    /api/v1/stats/summary      → Statistik kepatuhan
-GET    /api/v1/stats/per-type     → Tren per jenis APD
-```
-
----
-
-## Langkah 2 — Jalankan Deteksi Real-Time
-
-**Buka Terminal 2 baru**, jalankan:
-
+### 🔹 Langkah 2: Jalankan Deteksi Kamera Real-Time
+**Di Terminal 2**, jalankan script AI untuk mulai mendeteksi dari kamera:
 ```bash
-# Webcam default (kamera bawaan laptop)
+# Menggunakan webcam bawaan laptop (Source 0)
 python scripts/detect_realtime.py --weights best.pt
 
-# Kamera eksternal
+# Jika ingin menggunakan kamera eksternal (Source 1)
 python scripts/detect_realtime.py --weights best.pt --source 1
-
-# IP Camera / RTSP
-python scripts/detect_realtime.py --weights best.pt --source rtsp://192.168.1.x/stream
-
-# Dengan area dan kamera spesifik
-python scripts/detect_realtime.py --weights best.pt --area "Area A" --camera "Kamera 1"
 ```
+✅ **Verifikasi:** Jendela kamera akan terbuka. Kotak hijau menandakan patuh, kotak merah menandakan pelanggaran. Foto pelanggaran akan otomatis tersimpan di folder `captures/`.
+*(Tekan tombol `Q` pada keyboard untuk menghentikan kamera).*
 
-**Verifikasi berhasil:**
-- Jendela kamera terbuka
-- Bounding box hijau = patuh, merah = pelanggaran
-- Di Terminal 1 (backend) muncul: `POST /api/v1/violations → 201`
-- Di Terminal 2 muncul: `✅ Berhasil: ['no helmet'] | ID: xxxx`
-
-**Kontrol:**
-- Tekan `Q` untuk berhenti
-
----
-
-## Langkah 3 — Jalankan Dashboard
-
-**Buka Terminal 3 baru**, pilih salah satu:
-
-### Opsi A — Streamlit (lengkap, butuh server)
+### 🔹 Langkah 3: Jalankan Dashboard Monitor
+**Di Terminal 3**, jalankan visualisasi dashboard berbasis web:
 ```bash
 streamlit run app/dashboard.py
 ```
-Buka browser → `http://localhost:8501`
-
-### Opsi B — HTML (langsung, tanpa server)
-```bash
-# Windows — buka langsung di browser
-start app/dashboard.html
-```
-Atau klik 2x file `app/dashboard.html` di File Explorer.
+✅ **Verifikasi:** Browser akan otomatis terbuka menuju `http://localhost:8501` yang menampilkan grafik laporan kepatuhan, foto bukti, dan riwayat pelanggaran.
 
 ---
 
-## Langkah 4 — Setup Notifikasi Telegram (Opsional)
+## 🔔 (Opsional) Setup Notifikasi Telegram
 
-**Buat bot Telegram:**
-1. Buka Telegram → cari `@BotFather`
-2. Ketik `/newbot` → ikuti instruksi
-3. Simpan token yang diberikan
+Sistem dapat mengirim alert beserta foto otomatis ke grup/chat Telegram Anda saat terdeteksi pelanggaran.
 
-**Dapatkan Chat ID:**
-1. Start bot kamu di Telegram
-2. Buka: `https://api.telegram.org/bot<TOKEN>/getUpdates`
-3. Catat angka `chat.id`
-
-**Set environment variable sebelum jalankan deteksi:**
-```bash
-# Windows PowerShell
-$env:TELEGRAM_TOKEN   = "token_dari_botfather"
-$env:TELEGRAM_CHAT_ID = "chat_id_kamu"
-```
+1. **Buat Bot:** Cari `@BotFather` di Telegram, ketik `/newbot`, ikuti instruksinya, dan simpan **Token** bot Anda.
+2. **Dapatkan Chat ID:** Start bot Anda, kirim pesan apa saja. Lalu buka browser: `https://api.telegram.org/bot<TOKEN_ANDA>/getUpdates`. Cari angka `id` di bagian `chat`.
+3. **Set Environment Variables:** Sebelum menjalankan *Langkah 2 (Deteksi Kamera)*, jalankan perintah ini di Terminal 2:
+   ```powershell
+   $env:TELEGRAM_TOKEN = "Masukkan_Token_Bot_Disini"
+   $env:TELEGRAM_CHAT_ID = "Masukkan_Chat_ID_Disini"
+   ```
 
 ---
 
-## Langkah 5 — Setup Database PostgreSQL (Opsional)
+## 🗄️ (Opsional) Setup Database PostgreSQL
 
-Jalankan PostgreSQL via Docker:
+Secara default, data ditampung dalam memori aplikasi. Jika Anda membutuhkan penyimpanan permanen menggunakan PostgreSQL via Docker:
 
-```bash
-docker-compose up -d db
-```
-
-Verifikasi:
-```bash
-docker ps
-# Harus muncul container apd_postgres running
-```
-
-Set environment variable:
-```bash
-$env:DB_HOST = "localhost"
-$env:DB_PORT = "5432"
-$env:DB_NAME = "apd_monitor"
-$env:DB_USER = "postgres"
-$env:DB_PASS = "postgres"
-```
+1. Pastikan Docker Desktop berjalan.
+2. Jalankan perintah:
+   ```bash
+   docker-compose up -d db
+   ```
+3. Set variabel environment database di Terminal 1 (sebelum menjalankan backend):
+   ```powershell
+   $env:DB_HOST = "localhost"
+   $env:DB_PORT = "5432"
+   $env:DB_NAME = "apd_monitor"
+   $env:DB_USER = "postgres"
+   $env:DB_PASS = "postgres"
+   ```
 
 ---
 
-## Ringkasan — Jalankan Semua Sekaligus
+## 🔧 Troubleshooting Umum
 
-Buka **3 terminal terpisah** di VSCode, jalankan berurutan:
-
-```
-Terminal 1 — Backend API:
-  uvicorn app.backend:app --host 0.0.0.0 --port 8000 --reload
-
-Terminal 2 — Deteksi Kamera:
-  python scripts/detect_realtime.py --weights best.pt
-
-Terminal 3 — Dashboard:
-  streamlit run app/dashboard.py
-```
-
----
-
-## Cek Status Sistem
-
-| Komponen | URL / Cara Cek |
-|---|---|
-| Backend API | `http://localhost:8000/docs` |
-| Dashboard Streamlit | `http://localhost:8501` |
-| Data pelanggaran | `http://localhost:8000/api/v1/violations` |
-| Statistik hari ini | `http://localhost:8000/api/v1/stats/summary` |
-| Log JSON | `captures/violation_log.json` |
-| Gambar bukti | folder `captures/` |
-
----
-
-## Troubleshooting
-
-**Error: `No module named 'utils'`**
-```bash
-$env:PYTHONPATH = "C:\apd_project_kelompok04\apd_project"
-```
-
-**Error: `streamlit not found`**
-```bash
-python -m streamlit run app/dashboard.py
-```
-
-**Error: `Could not open camera`**
-```bash
-# Coba source 0 atau 1
-python scripts/detect_realtime.py --weights best.pt --source 1
-```
-
-**Error: `Invalid CUDA device=0`**
-```bash
-# Tidak ada GPU, pakai CPU
-python scripts/detect_realtime.py --weights best.pt --device cpu
-```
-
-**Backend tidak bisa diakses dari terminal deteksi:**
-- Pastikan Terminal 1 (backend) sudah jalan dulu
-- Cek `http://localhost:8000` bisa dibuka di browser
-
----
-
-## Evaluasi Model
-
-Jalankan untuk mendapatkan mAP, precision, recall:
-
-```bash
-python scripts/evaluate.py --weights best.pt --split test --save_json
-```
-
-Hasil tersimpan di `runs/eval_results.json`.
-
----
-
-## Tim Pengembang
-
-| Nama | NIM | Peran |
-|---|---|---|
-| Elvin Darrels Markho | 235150201111011 | Sistem & Bisnis |
-| Rafly Januar Raharjo | 235150401111050 | AI Logic & Algoritma |
-| Muhamad Fazri Supani | 235150701111019 | Backend & Deployment |
-| Zidan Kusuma Putra W. | 235150307111002 | Computer Vision Engineer |
-| Andan Riski Mustari | 235150301111002 | Video & Camera Engineer |
-| Aqilah Akma | 235150301111017 | System Integrator |
-
----
-
-*Universitas Brawijaya – Fakultas Ilmu Komputer – 2026*
+* **Camera Error / Could not open camera:** Ganti `--source 0` menjadi `--source 1` atau pastikan kamera tidak sedang dipakai aplikasi lain (seperti Zoom/Meet).
+* **ModuleNotFoundError:** Anda lupa mengaktifkan `.venv`. Kembali lakukan Langkah 0.
+* **ImportError (utils tidak ditemukan):** Set PYTHONPATH dengan menjalankan perintah: `$env:PYTHONPATH = "d:\apd_project_kelompok04\apd_project"`.
+* **Program Tiba-Tiba "Freeze" Saat Loading AI:** Saat pertama kali dijalankan, PyTorch membutuhkan waktu beberapa detik memuat file `.dll`. Jangan menekan `Ctrl+C`, cukup tunggu hingga jendela kamera terbuka.
