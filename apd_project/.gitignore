@@ -1,0 +1,45 @@
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# YOLO / ML
+runs/
+captures/
+
+
+# Database
+*.sqlite
+*.sqlite3
+*.db
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Mengabaikan Virtual Environment
+.venv/
+**/.venv/
+
+# Mengabaikan file konfigurasi rahasia
+.env
+
+# Mengabaikan Dataset dan hasil training (jika ukurannya besar)
+dataset/
+runs/
+captures/
+*.pt
+best.pt
+
+# Mengabaikan cache python
+__pycache__/
