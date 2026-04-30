@@ -39,6 +39,30 @@ st.set_page_config(
     layout     = "wide",
 )
 
+# ──────────────────────────────────────────────────────────────
+# LOGIN SYSTEM
+# ──────────────────────────────────────────────────────────────
+DASHBOARD_PASS = os.getenv("DASHBOARD_PASS", "admin123")
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.title("🔒 Login Sistem Monitoring K3")
+    st.caption("Silakan masukkan kata sandi administrator untuk mengakses dashboard.")
+    
+    with st.form("login_form"):
+        pwd = st.text_input("Password", type="password")
+        submit = st.form_submit_button("Login")
+        
+        if submit:
+            if pwd == DASHBOARD_PASS:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Password salah! Akses ditolak.")
+    st.stop()
+
 
 # ──────────────────────────────────────────────────────────────
 # LOAD DATA

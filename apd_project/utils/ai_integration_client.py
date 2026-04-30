@@ -8,6 +8,7 @@ class K3IntegrationClient:
     def __init__(self, base_url="http://localhost:8000"):
         self.base_url = base_url
         self.url = f"{base_url}/api/v1/violations"
+        self.api_key = os.getenv("API_KEY", "K3_SecretKey_2026")
 
     def send_violation(self, violation_types, confidence, image_path, area="Area A", camera="Kamera 1"):
         if isinstance(violation_types, str):
@@ -33,10 +34,12 @@ class K3IntegrationClient:
                 files = {
                     'image': (os.path.basename(image_path), img_file, mime_type)
                 }
+                headers = {"X-API-Key": self.api_key}
                 response = requests.post(
                     self.url,
                     data=payload,
                     files=files,
+                    headers=headers,
                     timeout=10
                 )
 

@@ -23,7 +23,7 @@ import shutil
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Query, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -37,6 +37,13 @@ LOG_PATH     = CAPTURE_DIR / "violation_log.json"
 CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
 
 VIOLATION_CLASSES = {"no helmet", "no vest", "no boots"}
+
+API_KEY = os.getenv("API_KEY", "K3_SecretKey_2026")
+
+async def verify_api_key(x_api_key: str = Header(None)):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="API Key tidak valid atau tidak ada")
+    return x_api_key
 
 # ──────────────────────────────────────────────────────────────
 # APP
@@ -149,7 +156,7 @@ def root():
 # Pengguna: Zidan (AI Detection Engine)
 # Menerima data deteksi + upload gambar bukti
 # ──────────────────────────────────────────────────────────────
-@app.post("/api/v1/violations", tags=["Violations"], status_code=201)
+@app.post("/api/v1/violations", tags=["Violations"], status_code=201, dependencies=[Depends(verify_api_key)])
 async def create_violation(
     violations : str        = Form(..., description="JSON array jenis pelanggaran, contoh: '[\"no helmet\"]'"),
     confidence : float      = Form(None, description="Confidence score model"),
@@ -274,7 +281,7 @@ def get_violation_by_id(violation_id: str):
 # Pengguna: Admin (Internal)
 # Hapus log pelanggaran jika salah deteksi
 # ──────────────────────────────────────────────────────────────
-@app.delete("/api/v1/violations/{violation_id}", tags=["Violations"])
+@app.delete("/api/v1/violations/{violation_id}", tags=["Violations"], dependencies=[Depends(verify_api_key)])
 def delete_violation(violation_id: str):
     """
     **Hapus log pelanggaran berdasarkan ID.**

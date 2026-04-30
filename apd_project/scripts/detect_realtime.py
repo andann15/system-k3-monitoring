@@ -16,6 +16,7 @@ import sys
 import cv2
 import numpy as np
 from pathlib import Path
+import psutil
 
 # Fix ModuleNotFoundError by adding the parent directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -59,7 +60,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def draw_overlay(frame, detections, fps: float, violation_count: int):
+def draw_overlay(frame, detections, fps: float, cpu_usage: float, violation_count: int):
     h, w = frame.shape[:2]
 
     for det in detections:
@@ -84,7 +85,7 @@ def draw_overlay(frame, detections, fps: float, violation_count: int):
 
     cv2.rectangle(frame, (0, 0), (w, 36), (30, 30, 30), -1)
     ts   = datetime.datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-    info = f"APD Monitor K3  |  FPS: {fps:.1f}  |  Pelanggaran: {violation_count}  |  {ts}"
+    info = f"APD Monitor K3  |  FPS: {fps:.1f}  |  CPU: {cpu_usage:.1f}%  |  Pelanggaran: {violation_count}  |  {ts}"
     cv2.putText(frame, info, (10, 24),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1)
 
@@ -175,14 +176,15 @@ def run(args):
             if not args.no_notify and capture_path:
                 send_notification(viol_types, capture_path)
 
-        # ── FPS ───────────────────────────────────────────────
+        # ── Performa (FPS & CPU) ──────────────────────────────
         curr_time = time.time()
         fps_calc  = 0.9 * fps_calc + 0.1 * (1.0 / max(curr_time - prev_time, 1e-6))
         prev_time = curr_time
+        cpu_perc  = psutil.cpu_percent()
 
         # ── Tampilkan frame ───────────────────────────────────
         if args.show:
-            annotated = draw_overlay(frame.copy(), detections, fps_calc, violation_total)
+            annotated = draw_overlay(frame.copy(), detections, fps_calc, cpu_perc, violation_total)
             cv2.imshow("APD Monitor K3 – Kelompok 04", annotated)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
