@@ -64,8 +64,11 @@ def draw_overlay(frame, detections, fps: float, cpu_usage: float, violation_coun
     h, w = frame.shape[:2]
 
     for det in detections:
-        x1, y1, x2, y2 = det["bbox"]
         cls_name = det["class"]
+        if cls_name == "person":
+            continue
+
+        x1, y1, x2, y2 = det["bbox"]
         conf     = det["conf"]
         color    = COLORS.get(cls_name, (200, 200, 200))
         is_viol  = cls_name in VIOLATION_CLS
@@ -120,6 +123,7 @@ def run(args):
     fps_calc        = 0.0
     prev_time       = time.time()
     violation_total = 0
+    notified_track_ids = set()
 
     while True:
         ret, frame = cap.read()
@@ -129,37 +133,59 @@ def run(args):
             continue
 
         # ── Inferensi ─────────────────────────────────────────
-        results = model.predict(
+        results = model.track(
             source  = frame,
             conf    = args.conf,
             iou     = args.iou,
             imgsz   = args.imgsz,
+            persist = True,
             verbose = False,
         )[0]
 
         # ── Parse deteksi ─────────────────────────────────────
         detections    = []
-        has_violation = False
+        has_new_violation = False
 
         for box in results.boxes:
             cls_id   = int(box.cls[0])
             conf     = float(box.conf[0])
             cls_name = CLASS_NAMES[cls_id] if cls_id < len(CLASS_NAMES) else "unknown"
             x1, y1, x2, y2 = map(int, box.xyxy[0])
+            track_id = int(box.id[0]) if box.id is not None else None
 
             detections.append({
-                "class" : cls_name,
-                "conf"  : conf,
-                "bbox"  : (x1, y1, x2, y2),
+                "class"    : cls_name,
+                "conf"     : conf,
+                "bbox"     : (x1, y1, x2, y2),
+                "track_id" : track_id
             })
 
+            # Tandai pelanggaran baru jika track_id belum pernah diberi notifikasi
             if cls_name in VIOLATION_CLS:
-                has_violation = True
+                if track_id is not None and track_id not in notified_track_ids:
+                    has_new_violation = True
+
+        # ── Tampilan & Anotasi Frame ──────────────────────────
+        cpu_perc  = psutil.cpu_percent()
+        curr_time = time.time()
+        fps_calc  = 0.9 * fps_calc + 0.1 * (1.0 / max(curr_time - prev_time, 1e-6))
+        prev_time = curr_time
+
+        annotated = draw_overlay(frame.copy(), detections, fps_calc, cpu_perc, violation_total + (1 if has_new_violation else 0))
 
         # ── Tangani pelanggaran ───────────────────────────────
-        if has_violation:
-            violation_total += 1
-            capture_path = handler.capture_only(frame)
+        if has_new_violation:
+            # Cari track ID pelanggar baru di frame ini
+            new_violator_ids = [d["track_id"] for d in detections 
+                                if d["class"] in VIOLATION_CLS and d["track_id"] is not None and d["track_id"] not in notified_track_ids]
+            
+            # Daftarkan ke set agar tidak dikirim ulang
+            for tid in new_violator_ids:
+                notified_track_ids.add(tid)
+                violation_total += 1
+
+            # Pass the annotated frame so the saved image has bounding boxes
+            capture_path = handler.capture_only(annotated)
 
             # Kirim ke backend API
             viol_types = [d["class"] for d in detections if d["class"] in VIOLATION_CLS]
@@ -176,15 +202,8 @@ def run(args):
             if not args.no_notify and capture_path:
                 send_notification(viol_types, capture_path)
 
-        # ── Performa (FPS & CPU) ──────────────────────────────
-        curr_time = time.time()
-        fps_calc  = 0.9 * fps_calc + 0.1 * (1.0 / max(curr_time - prev_time, 1e-6))
-        prev_time = curr_time
-        cpu_perc  = psutil.cpu_percent()
-
-        # ── Tampilkan frame ───────────────────────────────────
+        # ── Tampilkan frame di Layar ──────────────────────────
         if args.show:
-            annotated = draw_overlay(frame.copy(), detections, fps_calc, cpu_perc, violation_total)
             cv2.imshow("APD Monitor K3 – Kelompok 04", annotated)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break

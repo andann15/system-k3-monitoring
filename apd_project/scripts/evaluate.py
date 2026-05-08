@@ -86,7 +86,17 @@ def evaluate(args):
         out = Path("runs/eval_results.json")
         out.parent.mkdir(exist_ok=True)
         out.write_text(json.dumps(result_dict, indent=2))
-        print(f"\n[INFO] Hasil disimpan ke: {out}")
+        print(f"\n[INFO] Hasil JSON disimpan ke: {out}")
+
+    # ── Confusion Matrix ──────────────────────────────────────
+    save_dir = getattr(metrics, 'save_dir', None)
+    if save_dir:
+        cm_path = Path(save_dir) / "confusion_matrix.png"
+        if cm_path.exists():
+            print(f"\n[INFO] Confusion Matrix (Matriks Kebingungan) berhasil digenerate.")
+            print(f"       Silakan cek file: {cm_path.absolute()}")
+        else:
+            print(f"\n[INFO] Direktori evaluasi: {save_dir}")
 
     print("\n[DONE] Evaluasi selesai.\n")
     return metrics
